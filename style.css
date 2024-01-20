@@ -1,0 +1,27 @@
+thead {
+    position: sticky;
+    top: 0;
+    background-color: #FFFFFF;
+}
+
+#file-list-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+#file-list {
+    height: 300px;
+    border: 1px solid #D3D3D3;
+    padding-left: 10px;
+    padding-right: 10px;
+    margin-top: 20px;
+    margin-left: 20px;
+    align-self: center;
+}
+
+#file-form {
+    margin: 20px 20px 0px 20px; 
+    /* width: 100%; */
+}

@@ -1,0 +1,12 @@
+{
+  "name": "electron-file-renamer",
+  "version": "1.0.0",
+  "main": "main.js",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.1.4"
+  },
+  "scripts": {
+    "start": "electron ."
+  }
+}
