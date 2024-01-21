@@ -4,9 +4,11 @@
   "main": "main.js",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^28.1.4"
+    "electron": "^28.1.4",
+    "electron-packager": "^17.1.2"
   },
   "scripts": {
-    "dev": "electron ."
+    "dev": "electron .",
+    "build": "electron-packager . Omnoemer --platform=win32 --arch=x64 --overwrite"
   }
 }
