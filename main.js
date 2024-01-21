@@ -15,7 +15,9 @@ const createWindow = () => {
     },
   });
 
-  const isDev = process.env.NODE_ENV === "development";
+  const isDev = process.env.APP_DEV
+    ? process.env.APP_DEV.trim() == "true"
+    : false;
   if (isDev) {
     win.webContents.openDevTools();
   }
