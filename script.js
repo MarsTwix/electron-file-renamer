@@ -3,6 +3,13 @@ const fs = require("fs");
 
 let g_directory = "";
 let g_files = [];
+let totalProgress = 0;
+let currentProgress = 0;
+const phases = {
+  backup: 0,
+  renameTemp: 1,
+  rename: 2,
+};
 
 const maxNumberLength = 5;
 
@@ -23,8 +30,29 @@ ipcRenderer.on("selected-directory", (_event, directory) => {
   document.getElementById("file-list-container").removeAttribute("hidden");
 });
 
+const setLoadingInfo = (info) => {
+  document.getElementById("loading-info").innerHTML = info;
+};
+
+const getCreationDate = (filePath) => {
+  const stats = fs.statSync(filePath);
+  return stats.birthtime;
+};
+
+const sortFilesByCreationDate = (files, directory) => {
+  return files.sort((fileA, fileB) => {
+    const creationDateA = getCreationDate(`${directory}/${fileA}`);
+    const creationDateB = getCreationDate(`${directory}/${fileB}`);
+
+    return creationDateA - creationDateB;
+  });
+};
+
 const getFiles = (directory) => {
-  return fs.readdirSync(directory);
+  const files = fs.readdirSync(directory).filter((file) => {
+    return fs.statSync(`${directory}/${file}`).isFile();
+  });
+  return sortFilesByCreationDate(files, directory);
 };
 
 const fillTable = (files) => {
@@ -37,12 +65,16 @@ const fillTable = (files) => {
   });
 };
 
-const setProgress = (progress) => {
+const addProgress = (progress) => {
+  currentProgress++;
+  progress = progress ?? (currentProgress / totalProgress) * 99 + "%";
   document.getElementById("progress-bar").style["width"] = progress;
   document.getElementById("progress-bar").innerHTML = progress;
 };
 
 const renameTempFiles = (files) => {
+  setLoadingInfo("Renaming files..");
+
   files.forEach((file, index) => {
     const fileExtension = file.split(".")[1];
     const prefix = document.getElementById("prefix").value;
@@ -57,32 +89,53 @@ const renameTempFiles = (files) => {
 
     fs.renameSync(g_directory + "/" + file, g_directory + "/" + newFileName);
 
-    const percentage = ((index + 1) / files.length) * 50 + "%";
-
-    setProgress(percentage);
+    addProgress();
   });
 };
 
 const renameFiles = (files) => {
-  files.forEach((file, index) => {
+  setLoadingInfo("Cleaning up files...");
+
+  files.forEach((file) => {
     fs.renameSync(
       g_directory + "/" + file,
-      g_directory + "/" + file.replace(".tmp", "")
+      g_directory + "/" + file.replace(".tmp", ""),
     );
-
-    const percentage =
-      ((index + files.length + 1) / (files.length * 2)) * 100 + "%";
-
-    setProgress(percentage);
+    addProgress();
   });
 };
 
-const prefixField = document.getElementById('prefix');
+const backupFiles = (files) => {
+  setLoadingInfo("Creating backup.");
+
+  fs.mkdirSync(g_directory + "/.bak");
+  files.forEach((file) => {
+    fs.copyFileSync(g_directory + "/" + file, g_directory + "/.bak/" + file);
+    addProgress();
+  });
+};
+
+const restoreFiles = (files) => {
+  setLoadingInfo("An error occured. Restoring files...");
+  files.forEach((file) => {
+    fs.unlinkSync(g_directory + "/" + file);
+  });
+
+  const backupFiles = fs.readdirSync(g_directory + "/.bak");
+
+  backupFiles.forEach((file) => {
+    fs.renameSync(g_directory + "/.bak/" + file, g_directory + "/" + file);
+  });
+
+  fs.rmdirSync(g_directory + "/.bak");
+};
+
+const prefixField = document.getElementById("prefix");
 
 prefixField.addEventListener("keyup", () => {
-  if(document.getElementById("prefix").value === ""){
+  if (document.getElementById("prefix").value === "") {
     document.getElementById("prefix").classList.add("is-invalid");
-  }else{
+  } else {
     document.getElementById("prefix").classList.remove("is-invalid");
   }
 });
@@ -90,10 +143,10 @@ prefixField.addEventListener("keyup", () => {
 const submitButton = document.getElementById("submit-button");
 
 submitButton.addEventListener("click", () => {
-  if(document.getElementById("prefix").value === ""){
+  if (document.getElementById("prefix").value === "") {
     document.getElementById("prefix").classList.add("is-invalid");
     return;
-  }else{
+  } else {
     document.getElementById("prefix").classList.remove("is-invalid");
   }
   document.getElementById("submit-button").setAttribute("disabled", "true");
@@ -101,14 +154,39 @@ submitButton.addEventListener("click", () => {
   document.getElementById("spinner").removeAttribute("hidden");
   document.getElementById("progress-bar-container").removeAttribute("hidden");
 
-  renameTempFiles(g_files);
+  totalProgress = g_files.length * phases.length;
 
-  g_files = getFiles(g_directory);
+  backupFiles(g_files);
 
-  renameFiles(g_files);
+  try {
+    renameTempFiles(g_files);
 
-  g_files = getFiles(g_directory);
-  fillTable(g_files);
+    g_files = getFiles(g_directory);
+
+    renameFiles(g_files);
+
+    g_files = getFiles(g_directory);
+    fillTable(g_files);
+
+    fs.rmdirSync(g_directory + "/.bak", { recursive: true });
+
+    addProgress("100%");
+    setLoadingInfo("Done!");
+
+  } catch (error) {
+    document.getElementById("progress-bar").classList.remove("bg-info");
+    document.getElementById("progress-bar").classList.add("bg-danger");
+    document.getElementById("progress-bar").innerHTML = "Error!";
+    document.getElementById("progress-bar").style["width"] = "100%";
+    alert(error);
+
+    restoreFiles(g_files);
+
+    setLoadingInfo("An error occured!");
+
+    g_files = getFiles(g_directory);
+    fillTable(g_files);
+  }
 
   document.getElementById("spinner").setAttribute("hidden", "true");
   document.getElementById("submit-button").removeAttribute("disabled");
