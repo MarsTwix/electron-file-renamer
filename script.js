@@ -1,5 +1,6 @@
 const { ipcRenderer } = require("electron");
 const fs = require("fs");
+const os = require("os");
 
 let g_directory = "";
 let g_files = [];
@@ -41,8 +42,8 @@ const getCreationDate = (filePath) => {
 
 const sortFilesByCreationDate = (files, directory) => {
   return files.sort((fileA, fileB) => {
-    const creationDateA = getCreationDate(`${directory}/${fileA}`);
-    const creationDateB = getCreationDate(`${directory}/${fileB}`);
+    const creationDateA = getCreationDate(directory + pathSeparator + fileA);
+    const creationDateB = getCreationDate(directory + pathSeparator + fileB);
 
     return creationDateA - creationDateB;
   });
@@ -50,7 +51,7 @@ const sortFilesByCreationDate = (files, directory) => {
 
 const getFiles = (directory) => {
   const files = fs.readdirSync(directory).filter((file) => {
-    return fs.statSync(`${directory}/${file}`).isFile();
+    return fs.statSync(directory + pathSeparator + file).isFile();
   });
   return sortFilesByCreationDate(files, directory);
 };
@@ -72,6 +73,8 @@ const addProgress = (progress) => {
   document.getElementById("progress-bar").innerHTML = progress;
 };
 
+const pathSeparator = os.platform() === "win32" ? "\\" : "/"
+
 const renameTempFiles = (files) => {
   setLoadingInfo("Renaming files..");
 
@@ -87,7 +90,10 @@ const renameTempFiles = (files) => {
       fileExtension +
       ".tmp";
 
-    fs.renameSync(g_directory + "/" + file, g_directory + "/" + newFileName);
+    fs.renameSync(
+      g_directory + pathSeparator + file,
+      g_directory + pathSeparator + newFileName
+    );
 
     addProgress();
   });
@@ -98,8 +104,8 @@ const renameFiles = (files) => {
 
   files.forEach((file) => {
     fs.renameSync(
-      g_directory + "/" + file,
-      g_directory + "/" + file.replace(".tmp", ""),
+      g_directory + pathSeparator + file,
+      g_directory + pathSeparator + file.replace(".tmp", "")
     );
     addProgress();
   });
@@ -108,9 +114,12 @@ const renameFiles = (files) => {
 const backupFiles = (files) => {
   setLoadingInfo("Creating backup.");
 
-  fs.mkdirSync(g_directory + "/.bak");
+  fs.mkdirSync(g_directory + pathSeparator + ".bak");
   files.forEach((file) => {
-    fs.copyFileSync(g_directory + "/" + file, g_directory + "/.bak/" + file);
+    fs.copyFileSync(
+      g_directory + pathSeparator + file,
+      g_directory + pathSeparator + ".bak" + pathSeparator + file
+    );
     addProgress();
   });
 };
@@ -118,16 +127,19 @@ const backupFiles = (files) => {
 const restoreFiles = (files) => {
   setLoadingInfo("An error occured. Restoring files...");
   files.forEach((file) => {
-    fs.unlinkSync(g_directory + "/" + file);
+    fs.unlinkSync(g_directory + pathSeparator + file);
   });
 
-  const backupFiles = fs.readdirSync(g_directory + "/.bak");
+  const backupFiles = fs.readdirSync(g_directory + pathSeparator + ".bak");
 
   backupFiles.forEach((file) => {
-    fs.renameSync(g_directory + "/.bak/" + file, g_directory + "/" + file);
+    fs.renameSync(
+      g_directory + pathSeparator + ".bak" + pathSeparator + file,
+      g_directory + pathSeparator + file
+    );
   });
 
-  fs.rmdirSync(g_directory + "/.bak");
+  fs.rmdirSync(g_directory + pathSeparator + ".bak");
 };
 
 const prefixField = document.getElementById("prefix");
@@ -168,11 +180,10 @@ submitButton.addEventListener("click", () => {
     g_files = getFiles(g_directory);
     fillTable(g_files);
 
-    fs.rmdirSync(g_directory + "/.bak", { recursive: true });
+    fs.rmdirSync(g_directory + pathSeparator + ".bak", { recursive: true });
 
     addProgress("100%");
     setLoadingInfo("Done!");
-
   } catch (error) {
     document.getElementById("progress-bar").classList.remove("bg-info");
     document.getElementById("progress-bar").classList.add("bg-danger");
