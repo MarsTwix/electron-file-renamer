@@ -24,10 +24,10 @@ $ npm i
 Now you've installed all dependencies needed, you need to run one more command to start the app:
 
 ``` console
-$ yarn start
+$ yarn dev
 ```
 ``` console
-$ npm run start
+$ npm run dev
 ```
 
 The app is running! 
