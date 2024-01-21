@@ -189,6 +189,7 @@ submitButton.addEventListener("click", () => {
     document.getElementById("progress-bar").classList.add("bg-danger");
     document.getElementById("progress-bar").innerHTML = "Error!";
     document.getElementById("progress-bar").style["width"] = "100%";
+    console.error(error);
     alert(error);
 
     restoreFiles(g_files);
