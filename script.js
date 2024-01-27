@@ -6,11 +6,6 @@ let g_directory = "";
 let g_files = [];
 let totalProgress = 0;
 let currentProgress = 0;
-const phases = {
-  backup: 0,
-  renameTemp: 1,
-  rename: 2,
-};
 
 const maxNumberLength = 5;
 
@@ -68,78 +63,84 @@ const fillTable = (files) => {
 
 const addProgress = (progress) => {
   currentProgress++;
-  progress = progress ?? (currentProgress / totalProgress) * 99 + "%";
+  progress =
+    progress ?? Math.ceil((currentProgress / totalProgress) * 99) + "%";
   document.getElementById("progress-bar").style["width"] = progress;
   document.getElementById("progress-bar").innerHTML = progress;
 };
 
-const pathSeparator = os.platform() === "win32" ? "\\" : "/"
+const pathSeparator = os.platform() === "win32" ? "\\" : "/";
 
-const renameTempFiles = (files) => {
+const renameTempFiles = async (files) => {
   setLoadingInfo("Renaming files..");
 
-  files.forEach((file, index) => {
-    const fileExtension = file.split(".")[1];
-    const prefix = document.getElementById("prefix").value;
+  const renamePromises = files.map((file, i) => {
+    return new Promise((resolve, reject) => {
+      const fileExtension = file.split(".")[1];
+      const prefix = document.getElementById("prefix").value;
 
-    const newFileName =
-      prefix +
-      "0".repeat(maxNumberLength - index.toString().length) +
-      index.toString() +
-      "." +
-      fileExtension +
-      ".tmp";
+      const newFileName =
+        prefix +
+        "0".repeat(maxNumberLength - i.toString().length) +
+        i.toString() +
+        "." +
+        fileExtension +
+        ".tmp";
 
-    fs.renameSync(
-      g_directory + pathSeparator + file,
-      g_directory + pathSeparator + newFileName
-    );
-
-    addProgress();
+      fs.rename(
+        g_directory + pathSeparator + file,
+        g_directory + pathSeparator + newFileName,
+        (error) => {
+          if (error) {
+            reject(error);
+          } else {
+            addProgress();
+            resolve();
+          }
+        }
+      );
+    });
   });
+
+  await Promise.all(renamePromises);
 };
 
-const renameFiles = (files) => {
+const renameFiles = async (files) => {
   setLoadingInfo("Cleaning up files...");
 
-  files.forEach((file) => {
-    fs.renameSync(
-      g_directory + pathSeparator + file,
-      g_directory + pathSeparator + file.replace(".tmp", "")
-    );
-    addProgress();
+  const renamePromises = files.map((file) => {
+    return new Promise((resolve, reject) => {
+      fs.rename(
+        g_directory + pathSeparator + file,
+        g_directory + pathSeparator + file.replace(".tmp", ""),
+        (error) => {
+          if (error) {
+            reject(error);
+          } else {
+            addProgress();
+            resolve();
+          }
+        }
+      );
+    });
   });
+
+  await Promise.all(renamePromises);
 };
 
-const backupFiles = (files) => {
-  setLoadingInfo("Creating backup.");
-
-  fs.mkdirSync(g_directory + pathSeparator + ".bak");
-  files.forEach((file) => {
-    fs.copyFileSync(
-      g_directory + pathSeparator + file,
-      g_directory + pathSeparator + ".bak" + pathSeparator + file
-    );
-    addProgress();
-  });
-};
-
-const restoreFiles = (files) => {
+const restoreFiles = async () => {
   setLoadingInfo("An error occured. Restoring files...");
-  files.forEach((file) => {
-    fs.unlinkSync(g_directory + pathSeparator + file);
-  });
+  const filesToRestore = getFiles(g_directory);
 
-  const backupFiles = fs.readdirSync(g_directory + pathSeparator + ".bak");
-
-  backupFiles.forEach((file) => {
-    fs.renameSync(
-      g_directory + pathSeparator + ".bak" + pathSeparator + file,
-      g_directory + pathSeparator + file
+  const restorePromises = filesToRestore.map((file, index) => {
+    if (file === g_files[index]) return Promise.resolve();
+    return fs.promises.rename(
+      g_directory + pathSeparator + file,
+      g_directory + pathSeparator + g_files[index]
     );
   });
 
-  fs.rmdirSync(g_directory + pathSeparator + ".bak");
+  await Promise.all(restorePromises);
 };
 
 const prefixField = document.getElementById("prefix");
@@ -154,7 +155,7 @@ prefixField.addEventListener("keyup", () => {
 
 const submitButton = document.getElementById("submit-button");
 
-submitButton.addEventListener("click", () => {
+submitButton.addEventListener("click", async () => {
   if (document.getElementById("prefix").value === "") {
     document.getElementById("prefix").classList.add("is-invalid");
     return;
@@ -164,23 +165,22 @@ submitButton.addEventListener("click", () => {
   document.getElementById("submit-button").setAttribute("disabled", "true");
   document.getElementById("submit-button").removeAttribute("hidden");
   document.getElementById("spinner").removeAttribute("hidden");
+
+  document.getElementById("progress-bar").classList.remove("bg-danger");
+  document.getElementById("progress-bar").classList.add("bg-info");
+  document.getElementById("progress-bar").innerHTML = "0%";
+  document.getElementById("progress-bar").style["width"] = "0%";
   document.getElementById("progress-bar-container").removeAttribute("hidden");
 
-  totalProgress = g_files.length * phases.length;
-
-  backupFiles(g_files);
+  currentProgress = 0;
+  totalProgress = g_files.length * 2;
 
   try {
-    renameTempFiles(g_files);
+    await renameTempFiles(g_files);
 
-    g_files = getFiles(g_directory);
+    const tempFiles = getFiles(g_directory);
 
-    renameFiles(g_files);
-
-    g_files = getFiles(g_directory);
-    fillTable(g_files);
-
-    fs.rmdirSync(g_directory + pathSeparator + ".bak", { recursive: true });
+    await renameFiles(tempFiles);
 
     addProgress("100%");
     setLoadingInfo("Done!");
@@ -192,13 +192,12 @@ submitButton.addEventListener("click", () => {
     console.error(error);
     alert(error);
 
-    restoreFiles(g_files);
-
+    await restoreFiles();
     setLoadingInfo("An error occured!");
-
-    g_files = getFiles(g_directory);
-    fillTable(g_files);
   }
+
+  g_files = getFiles(g_directory);
+  fillTable(g_files);
 
   document.getElementById("spinner").setAttribute("hidden", "true");
   document.getElementById("submit-button").removeAttribute("disabled");
